@@ -107,7 +107,7 @@ def get_player_achievements(user_id):
         return jsonify({'error': str(e)}), 500
     
 # Award achievement to player by user_id and achievement_id
-@app.route('api/player/<user_id>/achievements', methods=['POST'])
+@app.route('/api/player/<user_id>/achievements', methods=['POST'])
 def award_achievement(user_id):
     try: 
         data = request.json
@@ -170,7 +170,7 @@ def award_achievement(user_id):
 # Streak Endpoints
 
 # Update player streak by user_id
-@app.route('api/player/<user_id>/streak', methods=['POST'])
+@app.route('/api/player/<user_id>/streak', methods=['POST'])
 def update_player_streak(user_id): 
     try: 
         data = request.json
