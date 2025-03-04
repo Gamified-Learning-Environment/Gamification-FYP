@@ -168,6 +168,53 @@ def award_achievement(user_id):
 
 # Streak Endpoints
 
+@app.route('api/player/<user_id>/streak', methods=['POST'])
+def update_player_streak(user_id): 
+    try: 
+        data = request.json
+        category = data.get('category', None) # Optional category for streak
+
+        # Find existing streak
+        query = {'user_id': user_id}
+        if category: # If category is provided, add to query
+            query['category'] = category 
+
+        # Get streak data from database
+        streakData = db.gamificationdb.streaks.find_one(query)
+
+        if streakData: # If streak data found
+
+            streak = Streak( # Create streak object from data
+                user_id=streakData.get('user_id'),
+                category=streakData.get('category'),
+                current_streak=streakData.get('current_streak', 0),
+                highest_streak=streakData.get('highest_streak', 0),
+                last_activity_date=streakData.get('last_activity_date')
+            )
+            streak.update_streak() # Update streak
+
+            # Save updated streak
+            db.gamificationdb.streaks.update_one(
+                query,  # Query to find streak
+                {'$set': streak.to_dict()} # Update streak data
+            )
+
+            return jsonify(streak.to_dict()), 200 # Return updated streak data with success status
+        else:
+            # Create new streak
+            streak = Streak(
+                user_id=user_id,
+                category=category,
+                current_streak=1,
+                highest_streak=1
+            )
+
+            # Save new streak
+            db.gamificationdb.streaks.insert_one(streak.to_dict())
+
+            return jsonify(streak.to_dict()), 201 # Return new streak data with created status
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 
