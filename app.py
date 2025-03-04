@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify # Various flask modules
 from init import app # Initialize Flask app
 import db # Database
 from bson import ObjectId # For using ObjectId in mongoDB
+from datetime import datetime # For date and time operations
 
 # Test route to verify connection
 @app.route('/', methods=['GET'])
@@ -168,6 +169,7 @@ def award_achievement(user_id):
 
 # Streak Endpoints
 
+# Update player streak by user_id
 @app.route('api/player/<user_id>/streak', methods=['POST'])
 def update_player_streak(user_id): 
     try: 
@@ -217,7 +219,75 @@ def update_player_streak(user_id):
         return jsonify({'error': str(e)}), 500
 
 
+# Challenge Endpoints
 
+# Get all challenges from database
+@app.route('/api/challenges', methods=['GET']) 
+def get_active_challenges(): 
+    try: 
+        # Get date
+        today = datetime.now()
+
+        # Find active challenges
+        challenges = list(db.gamificationdb.challenges.find({
+            'start_date': {'$lte': today}, # Start date is less than or equal to today
+            'end_date': {'$gte': today} # End date is greater than or equal to today
+        }))
+
+        # Convert object Ids to strings
+        for challenge in challenges:
+            challenge['_id'] = str(challenge['_id'])
+
+        return jsonify(challenges), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Complete challenge by user_id and challenge_id
+@app.route('/api/player/<user_id>/challenges/<challenges_id>', methods=['POST']) 
+def complete_challenge(user_id, challenge_id): 
+    try: 
+        # Find challenge
+        challengeData = db.gamificationdb.challenges.find_one({'challenge_id': challenge_id})
+        if not challengeData: # Return error if challenge not found
+            return jsonify({'error': 'Challenge not found'}), 404
+        
+        # Find player
+        playerData = db.gamificationdb.players.find_one({'user_id': user_id})
+        if not playerData: # Return error if player not found
+            return jsonify({'error': 'Player not found'}), 404
+        
+        # Check if player has already completed the challenge
+        completedChallenges = playerData.get('completed_challenges', [])
+        if challenge_id in completedChallenges:
+            return jsonify({'error': 'Challenge already completed'}), 400
+        
+        # Award player
+        xp_reward = challengeData.get('xp_reward', 0) # Get xp reward from challenge
+        badge_rewards = challengeData.get('reward_badges', []) # Get badge rewards from challenge
+
+        update_fields = { # Update fields for player document
+            '$push': {'completed_challenges': challenge_id},
+            '$inc': {'xp': xp_reward}
+        }
+
+        if badge_rewards: 
+            if 'badges' not in playerData: 
+                update_fields['$set'] = {'badges': badge_rewards}
+            else:
+                update_fields['$push']['badges'] = {'$each': badge_rewards}
+
+        # Update player document in db
+        db.gamificationdb.players.update_one({'user_id': user_id}, update_fields)
+
+        response = { # Response data, including challenge id, xp reward and badge rewardss
+            'challenge_completed': challenge_id,
+            'xp_earned': xp_reward,
+            'badges_earned': badge_rewards
+        }
+
+        return jsonify(response), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # Run the app
