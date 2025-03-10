@@ -6,7 +6,8 @@ from config import MONGODB_URI
 client = pymongo.MongoClient(MONGODB_URI) # create a client
 gamificationdb = client.get_database('Gamificationdatabase') # get the database
 
-gamification_collection = gamificationdb.gamificationcollection # get the results collection
+#gamification_collection = gamificationdb.gamificationcollection # get the collection for gamification
+users_collection = gamificationdb.users # get the collection for users
 
 # Test connection
 client.server_info()

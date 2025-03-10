@@ -1,0 +1,21 @@
+# Description: This file contains utility functions that are used in the application.
+from bson import ObjectId
+import json
+
+# Used to encode MongoDB ObjectIds to strings for JSON serialization
+class JSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, ObjectId):
+            return str(obj)
+        return super(JSONEncoder, self).default(obj)
+
+# Convert an object to JSON-serializable format by handling MongoDB ObjectIds
+def prepare_for_json(obj):
+    if isinstance(obj, list):
+        return [prepare_for_json(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {k: prepare_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, ObjectId):
+        return str(obj)
+    else:
+        return obj
