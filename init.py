@@ -2,7 +2,6 @@ from flask import Flask
 from flask_cors import CORS
 from models.achievement import Achievement
 from models.badge import Badge
-from models.challenge import Challenge
 import db
 from datetime import datetime, timedelta
 
@@ -142,41 +141,271 @@ def init_badges():
         if not existing:
             db.gamificationdb.badges.insert_one(badge.to_dict())
 
-def init_challenges():
-    # Initialize default challenges
 
-    today = datetime.now()
-    tomorrow = today + timedelta(days=1)
-
-    challenges = [
-        Challenge(
-            title="Daily Quiz Master",
-            description="Complete 3 quizzes today",
-            category="daily",
-            start_date=today,
-            end_date=tomorrow,
-            reward_xp=150,
-            requirements={"quizzes_completed": 3}
+# Initialize campaigns in database
+def init_campaigns():
+    """Initialize campaigns in the database on app startup"""
+    from models.campaign import Campaign
+    from models.quest import Quest
+    
+    # Check if campaigns already exist
+    existing_campaigns = db.gamificationdb.campaigns.count_documents({})
+    
+    if existing_campaigns > 0:
+        print(f"Found {existing_campaigns} existing campaigns, skipping initialization")
+        return
+    
+    print("Initializing campaigns...")
+    
+    # Campaign 1: Quiz Creator
+    quiz_creator = Campaign(
+        title="Quiz Master Creator",
+        description="Learn to create engaging and effective quizzes",
+        theme={
+            "primaryColor": "#9333ea",  # Purple
+            "secondaryColor": "#c4b5fd"
+        },
+        category="creation",
+        required_level=1,
+        xp_reward=200,
+        customization_rewards=[
+            {"type": "avatar_frame", "id": "quiz_master_frame"}
+        ]
+    ).to_dict()
+    
+    db.gamificationdb.campaigns.insert_one(quiz_creator)
+    
+    # Quests for Quiz Creator campaign
+    quests = [
+        Quest(
+            campaign_id=quiz_creator["campaign_id"],
+            title="First Steps",
+            description="Create your first quiz",
+            order=0,
+            xp_reward=50,
+            objectives=[
+                {
+                    "type": "create_quiz",
+                    "description": "Create your first quiz",
+                    "current": 0,
+                    "required": 1
+                }
+            ]
         ),
-        Challenge(
-            title="Perfect Score Challenge",
-            description="Get a 100% score on any quiz today",
-            category="daily",
-            start_date=today,
-            end_date=tomorrow,
-            reward_xp=200,
-            requirements={"perfect_score": True}
+        Quest(
+            campaign_id=quiz_creator["campaign_id"],
+            title="Add Some Images",
+            description="Create a quiz with at least 3 images",
+            order=1,
+            xp_reward=75,
+            objectives=[
+                {
+                    "type": "quiz_with_images",
+                    "description": "Add at least 3 images to a quiz",
+                    "current": 0,
+                    "required": 1
+                }
+            ],
+            customization_rewards=[
+                {"type": "avatar_background", "id": "quiz_creator_bg"}
+            ]
         ),
+        Quest(
+            campaign_id=quiz_creator["campaign_id"],
+            title="AI Assistant",
+            description="Create a quiz using AI generation",
+            order=2,
+            xp_reward=100,
+            objectives=[
+                {
+                    "type": "create_ai_quiz",
+                    "description": "Create a quiz using AI generation",
+                    "current": 0,
+                    "required": 1
+                }
+            ]
+        ),
+        Quest(
+            campaign_id=quiz_creator["campaign_id"],
+            title="Quiz Portfolio",
+            description="Create 5 quizzes in total",
+            order=3,
+            xp_reward=150,
+            objectives=[
+                {
+                    "type": "create_quiz",
+                    "description": "Create quizzes",
+                    "current": 0,
+                    "required": 5
+                }
+            ],
+            customization_rewards=[
+                {"type": "title", "id": "quiz_creator"}
+            ]
+        )
     ]
-
-    # Insert into database
-    for challenge in challenges: 
-        db.gamificationdb.challenges.insert_one(challenge.to_dict())
-
+    
+    for quest in quests:
+        db.gamificationdb.quests.insert_one(quest.to_dict())
+    
+    # Campaign 2: Science Explorer
+    science_explorer = Campaign(
+        title="Science Explorer",
+        description="Master scientific knowledge through quizzes",
+        theme={
+            "primaryColor": "#2563eb",  # Blue
+            "secondaryColor": "#93c5fd"
+        },
+        category="science",
+        required_level=2,
+        xp_reward=250,
+        customization_rewards=[
+            {"type": "avatar", "id": "scientist_avatar"}
+        ]
+    ).to_dict()
+    
+    db.gamificationdb.campaigns.insert_one(science_explorer)
+    
+    # Quests for Science Explorer
+    quests = [
+        Quest(
+            campaign_id=science_explorer["campaign_id"],
+            title="Beginner Scientist",
+            description="Complete 3 science quizzes",
+            order=0,
+            xp_reward=50,
+            objectives=[
+                {
+                    "type": "complete_category_quiz",
+                    "category": "science",
+                    "description": "Complete science quizzes",
+                    "current": 0,
+                    "required": 3
+                }
+            ]
+        ),
+        Quest(
+            campaign_id=science_explorer["campaign_id"],
+            title="Perfect Score",
+            description="Get a perfect score on a science quiz",
+            order=1,
+            xp_reward=100,
+            objectives=[
+                {
+                    "type": "perfect_category_quiz",
+                    "category": "science",
+                    "description": "Get 100% on a science quiz",
+                    "current": 0,
+                    "required": 1
+                }
+            ],
+            customization_rewards=[
+                {"type": "badge", "id": "science_perfect"}
+            ]
+        ),
+        Quest(
+            campaign_id=science_explorer["campaign_id"],
+            title="Science Expert",
+            description="Complete 10 science quizzes with an average score of 80% or higher",
+            order=2,
+            xp_reward=150,
+            objectives=[
+                {
+                    "type": "complete_category_quiz_with_score",
+                    "category": "science",
+                    "min_score": 80,
+                    "description": "Complete science quizzes with high scores",
+                    "current": 0,
+                    "required": 10
+                }
+            ]
+        )
+    ]
+    
+    for quest in quests:
+        db.gamificationdb.quests.insert_one(quest.to_dict())
+    
+    # Campaign 3: Streak Master
+    streak_master = Campaign(
+        title="Streak Master",
+        description="Build your consistency and daily learning habit",
+        theme={
+            "primaryColor": "#dc2626",  # Red
+            "secondaryColor": "#fca5a5"
+        },
+        category="consistency",
+        required_level=1,
+        xp_reward=300,
+        customization_rewards=[
+            {"type": "profile_effect", "id": "flame_aura"}
+        ]
+    ).to_dict()
+    
+    db.gamificationdb.campaigns.insert_one(streak_master)
+    
+    # Quests for Streak Master
+    quests = [
+        Quest(
+            campaign_id=streak_master["campaign_id"],
+            title="First Week",
+            description="Maintain a 7-day streak",
+            order=0,
+            xp_reward=75,
+            objectives=[
+                {
+                    "type": "maintain_streak",
+                    "description": "Log in and complete at least one quiz every day",
+                    "current": 0,
+                    "required": 7
+                }
+            ],
+            customization_rewards=[
+                {"type": "badge", "id": "weekly_streak"}
+            ]
+        ),
+        Quest(
+            campaign_id=streak_master["campaign_id"],
+            title="Two Week Challenge",
+            description="Maintain a 14-day streak",
+            order=1,
+            xp_reward=150,
+            objectives=[
+                {
+                    "type": "maintain_streak",
+                    "description": "Log in and complete at least one quiz every day",
+                    "current": 0,
+                    "required": 14
+                }
+            ]
+        ),
+        Quest(
+            campaign_id=streak_master["campaign_id"],
+            title="Month Master",
+            description="Maintain a 30-day streak",
+            order=2,
+            xp_reward=300,
+            objectives=[
+                {
+                    "type": "maintain_streak",
+                    "description": "Log in and complete at least one quiz every day",
+                    "current": 0,
+                    "required": 30
+                }
+            ],
+            customization_rewards=[
+                {"type": "title", "id": "streak_master"}
+            ]
+        )
+    ]
+    
+    for quest in quests:
+        db.gamificationdb.quests.insert_one(quest.to_dict())
+    
+    print("Campaign initialization complete")
 
 
 # Run initialization
 if __name__ == "__main__":
     init_achievements()
     init_badges()
-    init_challenges()
+    init_campaigns()

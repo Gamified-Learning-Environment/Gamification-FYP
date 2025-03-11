@@ -16,7 +16,6 @@ def home():
 from models.achievement import Achievement
 from models.badge import Badge
 from models.player import Player
-from models.challenge import Challenge
 from models.streak import Streak
 
 # Set up logging
@@ -463,205 +462,325 @@ def update_player_streak(user_id):
         return jsonify({'error': str(e)}), 500
 
 
-# Challenge Endpoints
+# Campaign Endpoints
 
-# Get all challenges from database
-@app.route('/api/challenges', methods=['GET']) 
-def get_active_challenges(): 
-    try: 
-        # Get date
-        today = datetime.now()
-
-        # Find active challenges
-        challenges = list(db.gamificationdb.challenges.find({
-            'start_date': {'$lte': today}, # Start date is less than or equal to today
-            'end_date': {'$gte': today} # End date is greater than or equal to today
+# Get all campaigns
+@app.route('/api/campaigns', methods=['GET'])
+def get_campaigns():
+    try:
+        # Get the user's level if a user_id is provided
+        user_id = request.args.get('user_id')
+        user_level = 1
+        
+        if user_id:
+            player = db.gamificationdb.players.find_one({'user_id': user_id})
+            if player:
+                user_level = player.get('current_level', 1)
+        
+        # Find campaigns that the user has the required level for
+        campaigns = list(db.gamificationdb.campaigns.find({
+            'required_level': {'$lte': user_level}
         }))
-
-        # Convert object Ids to strings
-        for challenge in challenges:
-            challenge['_id'] = str(challenge['_id'])
-
-        return jsonify(challenges), 200
+        
+        # Convert ObjectIds to strings
+        for campaign in campaigns:
+            campaign['_id'] = str(campaign['_id'])
+        
+        return jsonify(campaigns), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Complete challenge by user_id and challenge_id
-@app.route('/api/player/<user_id>/challenges/<challenges_id>', methods=['POST']) 
-def complete_challenge(user_id, challenge_id): 
-    try: 
-        # Find challenge
-        challengeData = db.gamificationdb.challenges.find_one({'challenge_id': challenge_id})
-        if not challengeData: # Return error if challenge not found
-            return jsonify({'error': 'Challenge not found'}), 404
-        
-        # Find player
-        playerData = db.gamificationdb.players.find_one({'user_id': user_id})
-        if not playerData: # Return error if player not found
-            return jsonify({'error': 'Player not found'}), 404
-        
-        # Check if player has already completed the challenge
-        completedChallenges = playerData.get('completed_challenges', [])
-        if challenge_id in completedChallenges:
-            return jsonify({'error': 'Challenge already completed'}), 400
-        
-        # Award player
-        xp_reward = challengeData.get('xp_reward', 0) # Get xp reward from challenge
-        badge_rewards = challengeData.get('reward_badges', []) # Get badge rewards from challenge
-
-        update_fields = { # Update fields for player document
-            '$push': {'completed_challenges': challenge_id},
-            '$inc': {'xp': xp_reward}
-        }
-
-        if badge_rewards: 
-            if 'badges' not in playerData: 
-                update_fields['$set'] = {'badges': badge_rewards}
-            else:
-                update_fields['$push']['badges'] = {'$each': badge_rewards}
-
-        # Update player document in db
-        db.gamificationdb.players.update_one({'user_id': user_id}, update_fields)
-
-        response = { # Response data, including challenge id, xp reward and badge rewardss
-            'challenge_completed': challenge_id,
-            'xp_earned': xp_reward,
-            'badges_earned': badge_rewards
-        }
-
-        return jsonify(response), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    
-# Get tracked challenges for a user
-@app.route('/api/users/<user_id>/tracked-challenges', methods=['GET'])
-def get_tracked_challenges(user_id):
-    """Get all challenges being tracked by a user"""
+# Get campaign by ID
+@app.route('/api/campaigns/<campaign_id>', methods=['GET'])
+def get_campaign(campaign_id):
     try:
+        campaign = db.gamificationdb.campaigns.find_one({'campaign_id': campaign_id})
+        
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+            
+        campaign['_id'] = str(campaign['_id'])
+        
+        return jsonify(campaign), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Get all quests for a campaign
+@app.route('/api/campaigns/<campaign_id>/quests', methods=['GET'])
+def get_campaign_quests(campaign_id):
+    try:
+        quests = list(db.gamificationdb.quests.find({'campaign_id': campaign_id}).sort('order', 1))
+        
+        if not quests:
+            return jsonify([]), 200
+            
+        for quest in quests:
+            quest['_id'] = str(quest['_id'])
+        
+        return jsonify(quests), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Get user's campaign progress
+@app.route('/api/users/<user_id>/campaigns', methods=['GET'])
+def get_user_campaigns(user_id):
+    try:
+        # Get player data
         player = db.gamificationdb.players.find_one({'user_id': user_id})
         if not player:
             return jsonify({'error': 'Player not found'}), 404
             
-        tracked_challenges_ids = player.get('tracked_challenges', [])
-        tracked_challenges = []
+        # Get user campaign progress
+        user_campaigns = list(db.gamificationdb.user_campaigns.find({'user_id': user_id}))
         
-        # Get complete challenge information with progress
-        for challenge_id in tracked_challenges_ids:
-            challenge = db.gamificationdb.challenges.find_one({'_id': ObjectId(challenge_id)})
-            if challenge:
-                # Convert ObjectId to string
-                challenge['_id'] = str(challenge['_id'])
+        # Format and return the data
+        result = []
+        for user_campaign in user_campaigns:
+            campaign = db.gamificationdb.campaigns.find_one({'campaign_id': user_campaign.get('campaign_id')})
+            
+            if campaign:
+                # Convert ObjectIds to strings
+                campaign['_id'] = str(campaign['_id'])
                 
-                # Add progress information
-                challenge_progress = db.gamificationdb.challenge_progress.find_one({
-                    'user_id': user_id,
-                    'challenge_id': challenge_id
-                })
+                # Get completed quests
+                completed_quests = user_campaign.get('completed_quest_ids', [])
+                current_quest_id = user_campaign.get('current_quest_id')
                 
-                if challenge_progress:
-                    challenge['progress'] = challenge_progress.get('progress', 0)
-                else:
-                    challenge['progress'] = 0
+                # Get all quests
+                quests = list(db.gamificationdb.quests.find({
+                    'campaign_id': campaign['campaign_id']
+                }).sort('order', 1))
+                
+                # Format quests with completion status
+                formatted_quests = []
+                current_quest_index = 0
+                
+                for i, quest in enumerate(quests):
+                    formatted_quest = {
+                        'id': quest['quest_id'],
+                        'title': quest['title'],
+                        'description': quest['description'],
+                        'completed': quest['quest_id'] in completed_quests,
+                        'order': quest['order']
+                    }
                     
-                tracked_challenges.append(challenge)
+                    if quest['quest_id'] == current_quest_id:
+                        current_quest_index = i
+                        
+                    formatted_quests.append(formatted_quest)
+                
+                # Construct final response
+                result.append({
+                    'campaign': campaign,
+                    'isActive': user_campaign.get('is_active', False),
+                    'startedAt': user_campaign.get('started_at'),
+                    'quests': formatted_quests,
+                    'currentQuestIndex': current_quest_index,
+                    'progress': len(completed_quests) / len(quests) * 100 if quests else 0
+                })
         
-        return jsonify(tracked_challenges), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    
-# Track a challenge
-@app.route('/api/users/<user_id>/tracked-challenges', methods=['POST'])
-def track_challenge(user_id):
-    """Add a challenge to user's tracked challenges"""
-    try:
-        data = request.json
-        challenge_id = data.get('challengeId')
-        
-        if not challenge_id:
-            return jsonify({'error': 'Challenge ID is required'}), 400
-            
-        # Verify the challenge exists
-        challenge = db.gamificationdb.challenges.find_one({'_id': ObjectId(challenge_id)})
-        if not challenge:
-            return jsonify({'error': 'Challenge not found'}), 404
-            
-        # Verify the user exists
-        player = db.gamificationdb.players.find_one({'user_id': user_id})
-        if not player:
-            return jsonify({'error': 'Player not found'}), 404
-            
-        # Check if user is already tracking this challenge
-        tracked_challenges = player.get('tracked_challenges', [])
-        if challenge_id in tracked_challenges:
-            return jsonify({'message': 'Challenge is already being tracked'}), 200
-            
-        # Check if user has reached the maximum number of tracked challenges (3)
-        if len(tracked_challenges) >= 3:
-            return jsonify({'error': 'Maximum number of tracked challenges reached (3)'}), 400
-            
-        # Add challenge to tracked challenges
-        db.gamificationdb.players.update_one(
-            {'user_id': user_id}, 
-            {'$push': {'tracked_challenges': challenge_id}}
-        )
-        
-        # Initialize challenge progress
-        db.gamificationdb.challenge_progress.insert_one({
-            'user_id': user_id,
-            'challenge_id': challenge_id,
-            'progress': 0,
-            'last_updated': datetime.now()
-        })
-        
-        return jsonify({
-            'message': 'Challenge is now being tracked',
-            'challenge_id': challenge_id
-        }), 200
+        return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Untrack a challenge
-@app.route('/api/users/<user_id>/tracked-challenges/<challenge_id>', methods=['DELETE'])
-def untrack_challenge(user_id, challenge_id):
-    """Remove a challenge from user's tracked challenges"""
+# Set active campaign
+@app.route('/api/users/<user_id>/campaigns/<campaign_id>/activate', methods=['POST'])
+def activate_campaign(user_id, campaign_id):
     try:
-        # Verify the user exists
+        # Get player data
         player = db.gamificationdb.players.find_one({'user_id': user_id})
         if not player:
             return jsonify({'error': 'Player not found'}), 404
             
-        # Remove challenge from tracked challenges
-        db.gamificationdb.players.update_one(
-            {'user_id': user_id}, 
-            {'$pull': {'tracked_challenges': challenge_id}}
+        # Check if campaign exists
+        campaign = db.gamificationdb.campaigns.find_one({'campaign_id': campaign_id})
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+            
+        # Check if player has required level
+        if player.get('current_level', 1) < campaign.get('required_level', 1):
+            return jsonify({'error': 'Player level too low for this campaign'}), 403
+        
+        # Set all campaigns to inactive
+        db.gamificationdb.user_campaigns.update_many(
+            {'user_id': user_id},
+            {'$set': {'is_active': False}}
         )
         
-        # Remove challenge progress
-        db.gamificationdb.challenge_progress.delete_one({
+        # Check if user already has this campaign
+        user_campaign = db.gamificationdb.user_campaigns.find_one({
             'user_id': user_id,
-            'challenge_id': challenge_id
+            'campaign_id': campaign_id
         })
         
-        return jsonify({
-            'message': 'Challenge is no longer being tracked',
-            'challenge_id': challenge_id
-        }), 200
+        if user_campaign:
+            # Update existing campaign to active
+            db.gamificationdb.user_campaigns.update_one(
+                {'_id': user_campaign['_id']},
+                {'$set': {'is_active': True}}
+            )
+        else:
+            # Start new campaign
+            first_quest = db.gamificationdb.quests.find_one(
+                {'campaign_id': campaign_id},
+                sort=[('order', 1)]
+            )
+            
+            first_quest_id = first_quest['quest_id'] if first_quest else None
+            
+            # Create user campaign record
+            user_campaign = {
+                'user_id': user_id,
+                'campaign_id': campaign_id,
+                'is_active': True,
+                'started_at': datetime.now().isoformat(),
+                'completed_quest_ids': [],
+                'current_quest_id': first_quest_id
+            }
+            
+            db.gamificationdb.user_campaigns.insert_one(user_campaign)
+        
+        return jsonify({'success': True, 'message': 'Campaign activated'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
-# Redirect completion endpoint to match frontend expectations
-@app.route('/api/challenges/<challenge_id>/complete', methods=['POST'])
-def complete_challenge_redirect(challenge_id):
-    """Complete a challenge (new URL format)"""
+
+# Complete quest objective
+@app.route('/api/users/<user_id>/quests/<quest_id>/progress', methods=['POST'])
+def update_quest_progress(user_id, quest_id):
     try:
         data = request.json
-        user_id = data.get('userId')
+        objective_type = data.get('objective_type')
+        progress = data.get('progress', 1)
         
-        if not user_id:
-            return jsonify({'error': 'User ID is required'}), 400
+        # Get player data
+        player = db.gamificationdb.players.find_one({'user_id': user_id})
+        if not player:
+            return jsonify({'error': 'Player not found'}), 404
+        
+        # Get quest data
+        quest = db.gamificationdb.quests.find_one({'quest_id': quest_id})
+        if not quest:
+            return jsonify({'error': 'Quest not found'}), 404
             
-        # Use the existing function by calling it directly
-        return complete_challenge(user_id, challenge_id)
+        # Get campaign data
+        campaign = db.gamificationdb.campaigns.find_one({'campaign_id': quest['campaign_id']})
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+            
+        # Get user campaign data
+        user_campaign = db.gamificationdb.user_campaigns.find_one({
+            'user_id': user_id,
+            'campaign_id': quest['campaign_id']
+        })
+        
+        if not user_campaign:
+            return jsonify({'error': 'User is not participating in this campaign'}), 404
+            
+        if quest['quest_id'] != user_campaign.get('current_quest_id'):
+            return jsonify({'error': 'This is not the current quest'}), 400
+            
+        # Update objective progress
+        objectives_completed = True
+        quest_completed = False
+        
+        for objective in quest.get('objectives', []):
+            if objective['type'] == objective_type:
+                objective['current'] = objective.get('current', 0) + progress
+                
+                if objective['current'] < objective['required']:
+                    objectives_completed = False
+                    
+        # If all objectives completed, mark quest as complete
+        if objectives_completed:
+            # Update user_campaigns record
+            db.gamificationdb.user_campaigns.update_one(
+                {'_id': user_campaign['_id']},
+                {'$push': {'completed_quest_ids': quest['quest_id']}}
+            )
+            
+            # Award XP
+            xp_reward = quest.get('xp_reward', 50)
+            current_xp = player.get('xp', 0)
+            current_level = player.get('current_level', 1)
+            
+            # Add XP
+            db.gamificationdb.players.update_one(
+                {'user_id': user_id},
+                {'$inc': {'xp': xp_reward}}
+            )
+            
+            # Check for level up
+            level_up = False
+            new_level = current_level
+            new_xp = current_xp + xp_reward
+            
+            while True:
+                next_level_xp = 1000 * (new_level * 0.5)
+                if new_xp >= next_level_xp:
+                    new_level += 1
+                    new_xp -= next_level_xp
+                    level_up = True
+                else:
+                    break
+                    
+            if level_up:
+                db.gamificationdb.players.update_one(
+                    {'user_id': user_id},
+                    {'$set': {'current_level': new_level, 'xp': new_xp}}
+                )
+            
+            # Apply customization rewards
+            if quest.get('customization_rewards'):
+                # Update player's customization options
+                db.gamificationdb.players.update_one(
+                    {'user_id': user_id},
+                    {'$push': {'customization_options': {'$each': quest['customization_rewards']}}}
+                )
+            
+            # Set next quest as current if there is one
+            next_quest = db.gamificationdb.quests.find_one({
+                'campaign_id': quest['campaign_id'],
+                'order': {'$gt': quest['order']}
+            }, sort=[('order', 1)])
+            
+            if next_quest:
+                db.gamificationdb.user_campaigns.update_one(
+                    {'_id': user_campaign['_id']},
+                    {'$set': {'current_quest_id': next_quest['quest_id']}}
+                )
+                
+                quest_completed = True
+            else:
+                # Campaign completed
+                # Award campaign completion rewards
+                campaign_xp = campaign.get('xp_reward', 100)
+                
+                # Add campaign XP
+                db.gamificationdb.players.update_one(
+                    {'user_id': user_id},
+                    {'$inc': {'xp': campaign_xp}}
+                )
+                
+                # Apply campaign customization rewards
+                if campaign.get('customization_rewards'):
+                    db.gamificationdb.players.update_one(
+                        {'user_id': user_id},
+                        {'$push': {'customization_options': {'$each': campaign['customization_rewards']}}}
+                    )
+                
+                quest_completed = True
+        
+        # Save updated quest
+        db.gamificationdb.quests.update_one(
+            {'quest_id': quest_id},
+            {'$set': {'objectives': quest['objectives']}}
+        )
+        
+        return jsonify({
+            'success': True,
+            'quest_completed': quest_completed,
+            'objectives_completed': objectives_completed
+        }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
