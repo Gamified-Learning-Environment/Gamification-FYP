@@ -592,10 +592,27 @@ def activate_campaign(user_id, campaign_id):
         if not player:
             return jsonify({'error': 'Player not found'}), 404
             
-        # Check if campaign exists
+        # Debug output
+        print(f"Looking for campaign with ID: {campaign_id}")
+        
+        # Try multiple ways to find the campaign
+        campaign = None
+        
+        # First try with campaign_id field
         campaign = db.gamificationdb.campaigns.find_one({'campaign_id': campaign_id})
+        
+        # If not found, try with MongoDB _id (as ObjectId or string)
         if not campaign:
-            return jsonify({'error': 'Campaign not found'}), 404
+            try:
+                from bson import ObjectId
+                obj_id = ObjectId(campaign_id)
+                campaign = db.gamificationdb.campaigns.find_one({'_id': obj_id})
+                print(f"Found campaign using ObjectId: {campaign['title'] if campaign else 'Not found'}")
+            except Exception as e:
+                print(f"Error converting to ObjectId: {str(e)}")
+        
+        if not campaign:
+            return jsonify({'error': 'Campaign not found', 'id_used': campaign_id}), 404
             
         # Check if player has required level
         if player.get('current_level', 1) < campaign.get('required_level', 1):
@@ -641,6 +658,27 @@ def activate_campaign(user_id, campaign_id):
             db.gamificationdb.user_campaigns.insert_one(user_campaign)
         
         return jsonify({'success': True, 'message': 'Campaign activated'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
+# Debug endpoint to see all campaign IDs
+@app.route('/api/debug/campaigns', methods=['GET'])
+def debug_campaigns():
+    """Debug endpoint to see all campaign IDs"""
+    try:
+        campaigns = list(db.gamificationdb.campaigns.find({}, {
+            '_id': 1, 'campaign_id': 1, 'title': 1
+        }))
+        
+        result = []
+        for campaign in campaigns:
+            result.append({
+                'mongo_id': str(campaign['_id']),
+                'campaign_id': campaign.get('campaign_id', 'not_set'),
+                'title': campaign.get('title', 'Untitled')
+            })
+            
+        return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -829,8 +867,20 @@ def init_achievements():
     except Exception as e:
         print(f"Error initializing achievements: {str(e)}")
 
+# Initialize campaigns in database
+def init_campaigns():
+    """Initialize campaigns in the database on app startup"""
+    try:
+        # Only run if campaigns collection is empty
+        if db.gamificationdb.campaigns.count_documents({}) == 0:
+            from seed_campaigns import seed_campaigns
+            seed_campaigns()
+    except Exception as e:
+        print(f"Error initializing campaigns: {str(e)}")
+
 # Call the initialization function
 init_achievements()
+init_campaigns()
 
 # Run the app
 if __name__ == '__main__':
