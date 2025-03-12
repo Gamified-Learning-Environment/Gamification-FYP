@@ -716,6 +716,24 @@ def update_quest_progress(user_id, quest_id):
             
         if quest['quest_id'] != user_campaign.get('current_quest_id'):
             return jsonify({'error': 'This is not the current quest'}), 400
+        
+        if not objective_type:
+            logger.error(f"Missing objective_type in request for quest {quest_id}")
+            return jsonify({'error': 'Missing objective_type parameter'}), 400
+            
+        # Log progress updates for debugging
+        logger.info(f"Updating quest {quest_id} progress for user {user_id} - Objective: {objective_type}, Progress: {progress}")
+        
+        # Track if any objectives were actually updated
+        updated = False
+        
+        for objective in quest.get('objectives', []):
+            if objective['type'] == objective_type:
+                objective['current'] = min(objective.get('current', 0) + progress, objective['required'])
+                updated = True
+                
+        if not updated:
+            logger.warning(f"No matching objective of type {objective_type} found in quest {quest_id}")
             
         # Update objective progress
         objectives_completed = True
