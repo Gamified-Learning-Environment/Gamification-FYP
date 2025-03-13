@@ -135,6 +135,47 @@ def add_player_xp(user_id):
         return jsonify(response), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+
+@app.route('/api/player/<user_id>/category/<category>/xp', methods=['POST'])
+def add_category_xp(user_id, category):
+    try: 
+        data = request.json
+        xpAmount = data.get('xp', 0)
+
+        # Find Player
+        playerData = db.gamificationdb.players.find_one({'user_id': user_id})
+        if not playerData:
+            return jsonify({'error': 'Player not found'}), 404
+        
+        # Convert to Player Object
+        player = Player(
+            user_id=playerData.get('user_id'),
+            username=playerData.get('username'),
+            current_level=playerData.get('current_level', 1),
+            xp=playerData.get('xp', 0),
+            category_levels=playerData.get('category_levels', {})
+        )
+
+        # Add XP to category
+        result = player.add_category_xp(category, xpAmount)
+
+        # Update player document in db
+        db.gamificationdb.players.update_one(
+            {'user_id': user_id},
+            {'$set': {'category_levels': player.category_levels}}
+        )
+
+        # Return updated info
+        return jsonify({
+            "category": category,
+            "level_up": result["level_up"],
+            "new_level": result["new_level"],
+            "new_xp": result["new_xp"],
+            "next_level_xp": 500 * result["new_level"]  # Same calculation as in add_category_xp
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500 
 
 
 # Achievement Endpoints
@@ -259,6 +300,14 @@ def check_achievements(user_id):
         data = request.json
         awarded_achievements = []
 
+        # Initialize category_progress here so it's always defined
+        category_progress = {
+            'category': None,
+            'level_up': False,
+            'new_level': 1,
+            'xp_earned': 0
+        }
+
         # Get player data
         player = db.gamificationdb.players.find_one({'user_id': user_id})
         if not player:
@@ -279,7 +328,6 @@ def check_achievements(user_id):
                 {'$inc': {'perfect_scores': 1}}
             )
                 
-        
         # Update with new data if provided
         if data.get('quiz_completed', False):
             quizzes_completed += 1
@@ -297,6 +345,17 @@ def check_achievements(user_id):
             )
             # Re-fetch player to get updated categories
             player = db.gamificationdb.players.find_one({'user_id': user_id})
+
+        # Check for category level achievements
+        category_levels = player.get('category_levels', {})
+        highest_category_level = 0
+        categories_at_level_3 = 0
+        
+        for cat, data in category_levels.items():
+            level = data.get('level', 1)
+            highest_category_level = max(highest_category_level, level)
+            if level >= 3:
+                categories_at_level_3 += 1
         
         # Get streak information
         streak_data = db.gamificationdb.streaks.find_one({'user_id': user_id, 'category': None})
@@ -336,6 +395,29 @@ def check_achievements(user_id):
                 unique_categories = len(player.get('completed_categories', []))
                 if unique_categories >= conditions['unique_categories']:
                     should_award = True
+
+            elif 'time_under' in conditions and data.get('completion_time') and data.get('completion_time') < conditions['time_under']:
+                should_award = True
+                
+            elif 'unique_categories' in conditions:
+                unique_categories = len(player.get('completed_categories', []))
+                if unique_categories >= conditions['unique_categories']:
+                    should_award = True
+                    
+            # Category level achievement check
+            elif 'category_level' in conditions:
+                required_level = conditions['category_level']
+                if highest_category_level >= required_level:
+                    should_award = True
+            
+            # Check for diverse categories achievement
+            elif 'diverse_categories' in conditions:
+                condition = conditions['diverse_categories']
+                required_level = condition.get('level', 3)
+                required_count = condition.get('count', 5)
+                
+                if categories_at_level_3 >= required_count:
+                    should_award = True
             
             # Award achievement if conditions are met
             if should_award:
@@ -360,6 +442,42 @@ def check_achievements(user_id):
                     'achievement': achievement,
                     'award_result': award_result
                 })
+
+             # Add category XP if category is provided
+            category = data.get('category')
+            if category and data.get('quiz_completed', False):
+                # Calculate category XP - can be based on score percentage
+                score_percentage = data.get('score_percentage', 0)
+                category_xp = int(50 + (score_percentage * 0.5))  # Base XP + bonus based on score
+                
+                # Find player
+                player_doc = db.gamificationdb.players.find_one({'user_id': user_id})
+                if player_doc:
+                    player = Player(
+                        user_id=player_doc['user_id'],
+                        username=player_doc.get('username'),
+                        current_level=player_doc.get('current_level', 1),
+                        xp=player_doc.get('xp', 0),
+                        category_levels=player_doc.get('category_levels', {})
+                    )
+                    
+                    # Add category XP
+                    category_result = player.add_category_xp(category, category_xp)
+                    
+                    # Update database
+                    db.gamificationdb.players.update_one(
+                        {'user_id': user_id},
+                        {'$set': {'category_levels': player.category_levels}}
+                    )
+                    
+                    # Add category progress to response
+                    category_progress = {
+                        'category': category,
+                        'level_up': category_result['level_up'],
+                        'new_level': category_result['new_level'],
+                        'xp_earned': category_xp
+                    }
+            
         
         return jsonify({
             'awarded_achievements': prepare_for_json(awarded_achievements),
@@ -367,7 +485,8 @@ def check_achievements(user_id):
                 'quizzes_completed': quizzes_completed,
                 'perfect_scores': perfect_scores,
                 'streak': current_streak,
-                'level': current_level
+                'level': current_level,
+                'category_progress': category_progress
             }
         }), 200
     except Exception as e:

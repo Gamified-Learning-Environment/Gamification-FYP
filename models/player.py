@@ -51,5 +51,44 @@ class Player: # Self is a reference to current instance, title and questions are
         # Return as percent
         # Return the progress as a percentage if the current level xp range is greater than 0
         return (progress / current_level_xp_range) * 100 if current_level_xp_range > 0 else 0 
-    
-    
+
+    # Add XP to a specific category and handle level ups
+    def add_category_xp(self, category, xp_amount):
+        """Add XP to a specific category and handle level ups"""
+        if category is None:
+            return False
+
+        # Initialize the category level if it does not exist
+        if category not in self.category_levels:
+            self.category_levels[category] = {
+                "level": 1,
+                "xp": 0
+            }
+
+        # Get current data
+        current_xp = self.category_levels[category]["xp"]
+        current_level = self.category_levels[category]["level"]
+        new_xp = current_xp + xp_amount
+        level_up = False
+
+        # Check level up
+        while True:
+            # Use smaller XP req. then in the global level
+            next_level_xp = 500 * (current_level * 0.5)
+            if new_xp >= next_level_xp:
+                current_level += 1
+                new_xp -= next_level_xp
+                level_up = True
+            else:
+                break
+
+        # Update category data
+        self.category_levels[category]["level"] = current_level
+        self.category_levels[category]["xp"] = new_xp
+        
+        return {
+            "level_up": level_up,
+            "new_level": current_level,
+            "new_xp": new_xp
+        }
+        

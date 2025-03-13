@@ -137,6 +137,38 @@ achievements = [
         "xp_reward": 100,
         "condition": {"time_under": 120},
         "created_at": datetime.now()
+    },
+
+    # Category level achievements
+    {
+        "achievement_id": str(uuid.uuid4()),
+        "title": "Category Specialist",
+        "description": "Reach Level 5 in any category",
+        "icon": "🔍",
+        "requirement": "Level 5 in one category",
+        "xp_reward": 200,
+        "condition": {"category_level": 5},
+        "created_at": datetime.now()
+    },
+    {
+        "achievement_id": str(uuid.uuid4()),
+        "title": "Category Master",
+        "description": "Reach Level 10 in any category",
+        "icon": "🏅",
+        "requirement": "Level 10 in one category",
+        "xp_reward": 350,
+        "condition": {"category_level": 10},
+        "created_at": datetime.now()
+    },
+    {
+        "achievement_id": str(uuid.uuid4()),
+        "title": "Jack of All Trades",
+        "description": "Reach Level 3 in 5 different categories",
+        "icon": "🌟",
+        "requirement": "Level 3+ in five categories",
+        "xp_reward": 400,
+        "condition": {"diverse_categories": {"level": 3, "count": 5}},
+        "created_at": datetime.now()
     }
 ]
 
