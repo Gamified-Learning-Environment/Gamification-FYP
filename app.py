@@ -5,6 +5,7 @@ from bson import ObjectId # For using ObjectId in mongoDB
 from datetime import datetime # For date and time operations
 import logging # For logging achievements
 from utils import prepare_for_json, JSONEncoder
+from flask_caching import Cache
 
 # Test route to verify connection
 @app.route('/', methods=['GET'])
@@ -22,8 +23,16 @@ from models.streak import Streak
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Initialize cache
+cache = Cache(app, config={'CACHE_TYPE': 'simple'})
+
 # Update flask JSON encoder to handle ObjectId
 app.json_encoder = JSONEncoder
+
+# Run this once during service initialization - create indexes for faster queries
+db.gamificationdb.players.create_index([('current_level', -1), ('xp', -1)])
+db.gamificationdb.players.create_index([('quizzes_completed', -1)])
+db.gamificationdb.players.create_index([('perfect_scores', -1)])
 
 # Player Endpoints
 
@@ -176,6 +185,96 @@ def add_category_xp(user_id, category):
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500 
+    
+
+@app.route('/api/leaderboard', methods=['GET'])
+@cache.cached(timeout=300)  # Cache for 5 minutes
+def get_leaderboard():
+    try:
+        # Get optional limit parameter (default to 100)
+        limit = request.args.get('limit', 100, type=int)
+        sort_by = request.args.get('sort_by', 'level')  # Default sort by level
+        category = request.args.get('category')  # Category filter
+        
+        # Get all players with their basic info
+        players = db.gamificationdb.players.find({}, {
+            'user_id': 1,
+            'username': 1,
+            'current_level': 1,
+            'xp': 1,
+            'achievements': 1,
+            'quizzes_completed': 1,
+            'perfect_scores': 1,
+            'category_levels': 1,
+            'completed_categories': 1
+        }).limit(limit)
+        
+        # Prepare leaderboard data
+        leaderboard_data = []
+        
+        for player in players:
+            # Get streak data for this player
+            streak_doc = db.gamificationdb.streaks.find_one({
+                'user_id': player['user_id'],
+                'category': category  # Get general streak (not category-specific)
+            })
+            
+            current_streak = streak_doc['current_streak'] if streak_doc else 0
+
+             # If filtering by category, get category-specific data
+            if category:
+                category_data = player.get('category_levels', {}).get(category, {})
+                category_level = category_data.get('level', 1)
+                category_xp = category_data.get('xp', 0)
+            else:
+                category_level = None
+                category_xp = None
+            
+            # Format player data for leaderboard
+            player_data = {
+                '_id': player['user_id'],
+                'username': player.get('username', ''),
+                'email': player.get('email', ''),
+                'level': category_level if category else player.get('current_level', 1),
+                'xp': category_xp if category else player.get('xp', 0),
+                'streakDays': current_streak,
+                'quizzesCompleted': player.get('quizzes_completed', 0),
+                'quizzesPerfect': player.get('perfect_scores', 0),
+                'totalAchievements': len(player.get('achievements', []))
+            }
+
+            # Only include players who have participated in the selected category
+            if category and category not in player.get('completed_categories', []):
+                continue
+            
+            leaderboard_data.append(player_data)
+        
+         # Sort based on the requested criteria
+        sort_key_map = {
+            'level': lambda p: (p['level'], p['xp']),
+            'xp': lambda p: p['xp'],
+            'streak': lambda p: p['streakDays'],
+            'quizzes': lambda p: p['quizzesCompleted'],
+            'perfect': lambda p: p['quizzesPerfect'],
+            'achievements': lambda p: p['totalAchievements']
+        }
+        
+        # Use the appropriate sort key or default to level
+        sort_key = sort_key_map.get(sort_by, sort_key_map['level'])
+        
+        # Sort the data
+        leaderboard_data = sorted(leaderboard_data, key=sort_key, reverse=True)
+        
+        # Convert ObjectId to string for JSON serialization
+        for player in leaderboard_data:
+            if isinstance(player['_id'], ObjectId):
+                player['_id'] = str(player['_id'])
+        
+        return jsonify(leaderboard_data), 200
+        
+    except Exception as e:
+        logger.error(f"Error fetching leaderboard: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 
 # Achievement Endpoints
