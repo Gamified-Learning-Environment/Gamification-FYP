@@ -41,16 +41,22 @@ db.gamificationdb.players.create_index([('perfect_scores', -1)])
 def get_player(user_id): 
     try:
         # Get player data from the database 
+        print(f"Getting player with user_id: {user_id}")
         playerData = db.gamificationdb.players.find_one({'user_id': user_id})
         
         if playerData: # If player data is found, return it
-            return jsonify(playerData), 200
+            # Convert ObjectId to string before sending to JSON
+            playerData['_id'] = str(playerData['_id'])
+            # Process any other ObjectId fields
+            return jsonify(prepare_for_json(playerData)), 200
         else: 
+            print(f"Creating new player for user_id: {user_id}")
             # Create new player profile if it doesn't exist
             newPlayer = Player(user_id=user_id, username=request.args.get('username', 'Player')).to_dict()
             db.gamificationdb.players.insert_one(newPlayer) # Insert new player into database
             return jsonify(newPlayer), 201 # Return the new player profile, 201 for created status
     except Exception as e: # Catch any exceptions and return error
+        print(f"Error getting player with user_id {user_id}: {str(e)}")
         return jsonify({'error': str(e)}), 500 
 
 # Alternative method for getting detailed player stats including level, XP, achievements, and category progress
@@ -304,14 +310,15 @@ def get_player_achievements(user_id):
         return jsonify({'error': str(e)}), 500
     
 # Endpoint compatibility for user achievements (alias for existing endpoint)
-@app.route('/api/users/<user_id>/achievements', methods=['GET'])
+@app.route('/api/player/<user_id>/achievements', methods=['GET'])
 def get_user_achievements(user_id):
     """Get all achievements unlocked by a user"""
     try:
         # Get player data
         player = db.gamificationdb.players.find_one({'user_id': user_id})
         if not player:
-            return jsonify({'error': 'Player not found'}), 404
+            # Return empty array instead of 404 to prevent frontend errors
+            return jsonify([{'error': 'Player not found'}]), 404
             
         # Get earned achievement IDs
         earned_achievements_ids = player.get('achievements', [])
@@ -319,6 +326,8 @@ def get_user_achievements(user_id):
         # Get full achievement details
         achievements = []
         for achievement_id in earned_achievements_ids:
+            # Log for debugging
+            print(f"Looking for achievement with ID: {achievement_id}")
             achievement = db.gamificationdb.achievements.find_one({'achievement_id': achievement_id})
             if achievement:
                 # Convert ObjectId to string
