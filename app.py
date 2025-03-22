@@ -1101,6 +1101,48 @@ def init_campaigns():
     except Exception as e:
         print(f"Error initializing campaigns: {str(e)}")
 
+
+@app.route('/api/leaderboard', methods=['GET'])
+def get_leaderboard():
+    """Get all players sorted by various stats for the leaderboard"""
+    try:
+        # Get all players from the database
+        players = list(db.gamificationdb.players.find({}))
+        
+        # Prepare player data for leaderboard
+        leaderboard_data = []
+        for player in players:
+            # Convert ObjectId to string for JSON serialization
+            player['_id'] = str(player['_id'])
+            
+            # Create a leaderboard entry with necessary fields
+            leaderboard_entry = {
+                '_id': player['_id'],
+                'user_id': player['user_id'],
+                'username': player.get('username', 'Unknown Player'),
+                'level': player.get('current_level', 1),
+                'xp': player.get('xp', 0),
+                'streakDays': 0,  # Will be populated below
+                'quizzesCompleted': player.get('quizzes_completed', 0),
+                'quizzesPerfect': player.get('perfect_scores', 0),
+                'totalAchievements': len(player.get('achievements', [])),
+                'profileImage': player.get('profile_image', None)
+            }
+            
+            # Get player's current streak if available
+            streak = db.gamificationdb.streaks.find_one({
+                'user_id': player['user_id'],
+                'category': None  # Get the overall streak, not category-specific
+            })
+            if streak:
+                leaderboard_entry['streakDays'] = streak.get('current_streak', 0)
+            
+            leaderboard_data.append(leaderboard_entry)
+        
+        return jsonify(leaderboard_data), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
 # Call the initialization function
 init_achievements()
 init_campaigns()
