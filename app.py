@@ -5,7 +5,6 @@ from bson import ObjectId # For using ObjectId in mongoDB
 from datetime import datetime # For date and time operations
 import logging # For logging achievements
 from utils import prepare_for_json, JSONEncoder
-from flask_caching import Cache
 
 # Test route to verify connection
 @app.route('/', methods=['GET'])
@@ -23,16 +22,8 @@ from models.streak import Streak
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize cache
-cache = Cache(app, config={'CACHE_TYPE': 'simple'})
-
 # Update flask JSON encoder to handle ObjectId
 app.json_encoder = JSONEncoder
-
-# Run this once during service initialization - create indexes for faster queries
-db.gamificationdb.players.create_index([('current_level', -1), ('xp', -1)])
-db.gamificationdb.players.create_index([('quizzes_completed', -1)])
-db.gamificationdb.players.create_index([('perfect_scores', -1)])
 
 # Player Endpoints
 
@@ -192,97 +183,6 @@ def add_category_xp(user_id, category):
     except Exception as e:
         return jsonify({"error": str(e)}), 500 
     
-
-@app.route('/api/leaderboard', methods=['GET'])
-@cache.cached(timeout=300)  # Cache for 5 minutes
-def get_leaderboard():
-    try:
-        # Get optional limit parameter (default to 100)
-        limit = request.args.get('limit', 100, type=int)
-        sort_by = request.args.get('sort_by', 'level')  # Default sort by level
-        category = request.args.get('category')  # Category filter
-        
-        # Get all players with their basic info
-        players = db.gamificationdb.players.find({}, {
-            'user_id': 1,
-            'username': 1,
-            'current_level': 1,
-            'xp': 1,
-            'achievements': 1,
-            'quizzes_completed': 1,
-            'perfect_scores': 1,
-            'category_levels': 1,
-            'completed_categories': 1
-        }).limit(limit)
-        
-        # Prepare leaderboard data
-        leaderboard_data = []
-        
-        for player in players:
-            # Get streak data for this player
-            streak_doc = db.gamificationdb.streaks.find_one({
-                'user_id': player['user_id'],
-                'category': category  # Get general streak (not category-specific)
-            })
-            
-            current_streak = streak_doc['current_streak'] if streak_doc else 0
-
-             # If filtering by category, get category-specific data
-            if category:
-                category_data = player.get('category_levels', {}).get(category, {})
-                category_level = category_data.get('level', 1)
-                category_xp = category_data.get('xp', 0)
-            else:
-                category_level = None
-                category_xp = None
-            
-            # Format player data for leaderboard
-            player_data = {
-                '_id': player['user_id'],
-                'username': player.get('username', ''),
-                'email': player.get('email', ''),
-                'level': category_level if category else player.get('current_level', 1),
-                'xp': category_xp if category else player.get('xp', 0),
-                'streakDays': current_streak,
-                'quizzesCompleted': player.get('quizzes_completed', 0),
-                'quizzesPerfect': player.get('perfect_scores', 0),
-                'totalAchievements': len(player.get('achievements', []))
-            }
-
-            # Only include players who have participated in the selected category
-            if category and category not in player.get('completed_categories', []):
-                continue
-            
-            leaderboard_data.append(player_data)
-        
-         # Sort based on the requested criteria
-        sort_key_map = {
-            'level': lambda p: (p['level'], p['xp']),
-            'xp': lambda p: p['xp'],
-            'streak': lambda p: p['streakDays'],
-            'quizzes': lambda p: p['quizzesCompleted'],
-            'perfect': lambda p: p['quizzesPerfect'],
-            'achievements': lambda p: p['totalAchievements']
-        }
-        
-        # Use the appropriate sort key or default to level
-        sort_key = sort_key_map.get(sort_by, sort_key_map['level'])
-        
-        # Sort the data
-        leaderboard_data = sorted(leaderboard_data, key=sort_key, reverse=True)
-        
-        # Convert ObjectId to string for JSON serialization
-        for player in leaderboard_data:
-            if isinstance(player['_id'], ObjectId):
-                player['_id'] = str(player['_id'])
-        
-        return jsonify(leaderboard_data), 200
-        
-    except Exception as e:
-        logger.error(f"Error fetching leaderboard: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-
 # Achievement Endpoints
 
 # Get all achievements from database, return as JSON
@@ -326,14 +226,10 @@ def get_user_achievements(user_id):
         # Get full achievement details
         achievements = []
         for achievement_id in earned_achievements_ids:
-            # Log for debugging
-            print(f"Looking for achievement with ID: {achievement_id}")
             achievement = db.gamificationdb.achievements.find_one({'achievement_id': achievement_id})
             if achievement:
-                # Convert ObjectId to string
+                # Convert ObjectId to string for JSON serialization
                 achievement['_id'] = str(achievement['_id'])
-                # Add date unlocked (assuming you store this information)
-                achievement['dateUnlocked'] = achievement.get('date_unlocked', datetime.now().isoformat())
                 achievements.append(achievement)
         
         return jsonify(achievements), 200
@@ -407,6 +303,7 @@ def check_achievements(user_id):
         # Define data first before using it
         data = request.json
         awarded_achievements = []
+        awarded_badges = []
 
         # Initialize category_progress here so it's always defined
         category_progress = {
@@ -422,11 +319,15 @@ def check_achievements(user_id):
             return jsonify({'error': 'Player not found'}), 404
         
         earned_achievements = player.get('achievements', [])
+        earned_badges = player.get('badges', [])
 
         # Get current stats
         quizzes_completed = player.get('quizzes_completed', 0)
         perfect_scores = player.get('perfect_scores', 0)
         current_level = player.get('current_level', 1)
+
+        print(f"Achievement check data: {data}")
+        print(f"Perfect score flag: {data.get('perfect_score', False)}")
 
         if data.get('perfect_score', False): # If perfect score, increment perfect scores
             logger.info(f"Perfect score detected for user {user_id}")
@@ -435,6 +336,54 @@ def check_achievements(user_id):
                 {'user_id': user_id}, 
                 {'$inc': {'perfect_scores': 1}}
             )
+
+            # Check for Perfect Score badge
+            perfect_badge = db.gamificationdb.badges.find_one({'name': 'Perfect Score'})
+            if perfect_badge and perfect_badge['badge_id'] not in earned_badges:
+                logger.info(f"Awarding Perfect Score badge to user {user_id}")
+                
+                # Award badge to player
+                db.gamificationdb.players.update_one(
+                    {'user_id': user_id},
+                    {'$addToSet': {'badges': perfect_badge['badge_id']}}
+                )
+                
+                # Format badge for response
+                perfect_badge['_id'] = str(perfect_badge['_id'])
+                perfect_badge['earned'] = True
+                awarded_badges.append(perfect_badge)
+
+        # Force check for perfect score achievements
+        perfect_score_achievements = list(db.gamificationdb.achievements.find({
+            'achievement_id': {'$nin': earned_achievements},
+            'condition.perfect_score': True
+        }))
+
+        # Explicitly award perfect score achievements
+        for achievement in perfect_score_achievements:
+            achievement['_id'] = str(achievement['_id'])
+            achievement_id = str(achievement['achievement_id'])
+            
+            # Award achievement to player
+            db.gamificationdb.players.update_one(
+                {'user_id': user_id},
+                {'$addToSet': {'achievements': achievement_id},
+                '$inc': {'xp': achievement.get('xp_reward', 0)}}
+            )
+            
+            # Add to awarded achievements
+            award_result = {
+                'achievement_id': achievement_id,
+                'title': achievement.get('title'),
+                'description': achievement.get('description'),
+                'icon': achievement.get('icon', '🏆'),
+                'xp_earned': achievement.get('xp_reward', 0)
+            }
+            awarded_achievements.append({
+                'achievement': achievement,
+                'award_result': award_result
+            })
+            logger.info(f"Awarded perfect score achievement {achievement['title']} to user {user_id}")
                 
         # Update with new data if provided
         if data.get('quiz_completed', False):
@@ -589,6 +538,7 @@ def check_achievements(user_id):
         
         return jsonify({
             'awarded_achievements': prepare_for_json(awarded_achievements),
+            'awarded_badges': prepare_for_json(awarded_badges),
             'stats': {
                 'quizzes_completed': quizzes_completed,
                 'perfect_scores': perfect_scores,
@@ -633,6 +583,34 @@ def debug_player_achievements(user_id):
             'unearned_count': len(unearned_achievements),
             'unearned_achievements': unearned_achievements
         }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# Badge Endpoints
+
+@app.route('/api/player/<user_id>/badges', methods=['GET'])
+def get_player_badges(user_id):
+    try:
+        # Get player data
+        player = db.gamificationdb.players.find_one({'user_id': user_id})
+        if not player:
+            return jsonify([]), 200  # Return empty array instead of 404 for frontend compatibility
+            
+        # Get earned badge IDs
+        earned_badge_ids = player.get('badges', [])
+        
+        # Get all badges
+        all_badges = list(db.gamificationdb.badges.find({}))
+        
+        # Format badges with earned status
+        formatted_badges = []
+        for badge in all_badges:
+            badge['_id'] = str(badge['_id'])
+            badge['earned'] = badge['badge_id'] in earned_badge_ids
+            formatted_badges.append(badge)
+        
+        return jsonify(formatted_badges), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
