@@ -1126,8 +1126,16 @@ def get_leaderboard():
                 'quizzesCompleted': player.get('quizzes_completed', 0),
                 'quizzesPerfect': player.get('perfect_scores', 0),
                 'totalAchievements': len(player.get('achievements', [])),
-                'profileImage': player.get('profile_image', None)
+                'profileImage': player.get('profile_image', None),
+                'imageUrl': player.get('image_url', None)
             }
+
+            try:
+                user_data = db.userdb.usercollection.find_one({'_id': ObjectId(player['user_id'])})
+                if user_data and 'imageUrl' in user_data and not leaderboard_entry['profileImage']:
+                    leaderboard_entry['imageUrl'] = user_data['imageUrl']
+            except Exception as e:
+                app.logger.error(f"Error fetching user details for leaderboard: {e}")
             
             # Get player's current streak if available
             streak = db.gamificationdb.streaks.find_one({
