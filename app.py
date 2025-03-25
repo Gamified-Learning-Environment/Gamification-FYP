@@ -500,6 +500,21 @@ def check_achievements(user_id):
                     'award_result': award_result
                 })
 
+            matching_badge = db.gamificationdb.badges.find_one({'name': achievement.get('title')})
+            if matching_badge and matching_badge['badge_id'] not in earned_badges:
+                logger.info(f"Awarding {matching_badge['name']} badge to user {user_id}")
+                
+                # Award badge to player
+                db.gamificationdb.players.update_one(
+                    {'user_id': user_id},
+                    {'$addToSet': {'badges': matching_badge['badge_id']}}
+                )
+                
+                # Format badge for response
+                matching_badge['_id'] = str(matching_badge['_id'])
+                matching_badge['earned'] = True
+                awarded_badges.append(matching_badge)
+
              # Add category XP if category is provided
             category = data.get('category')
             if category and data.get('quiz_completed', False):
@@ -534,7 +549,6 @@ def check_achievements(user_id):
                         'new_level': category_result['new_level'],
                         'xp_earned': category_xp
                     }
-            
         
         return jsonify({
             'awarded_achievements': prepare_for_json(awarded_achievements),
@@ -1148,6 +1162,52 @@ def get_leaderboard():
             leaderboard_data.append(leaderboard_entry)
         
         return jsonify(leaderboard_data), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/player/<user_id>/customization', methods=['GET'])
+def get_player_customization(user_id):
+    try:
+        # Get player customization data
+        player = db.gamificationdb.players.find_one({'user_id': user_id})
+        if not player or 'customization' not in player:
+            return jsonify({
+                'theme': {
+                    'primaryColor': '#8b5cf6',
+                    'accentColor': '#f0abfc',
+                    'cardStyle': 'default',
+                    'showLevel': True,
+                    'showStreaks': True,
+                    'showAchievements': True,
+                    'backgroundPattern': 'none',
+                    'fontStyle': 'default'
+                },
+                'displayBadges': []
+            }), 200
+        
+        return jsonify(player['customization']), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/player/<user_id>/customization', methods=['POST'])
+def update_player_customization(user_id):
+    try:
+        # Get request data
+        customization_data = request.json
+        
+        # Validate the data (simplified validation)
+        if not isinstance(customization_data, dict):
+            return jsonify({'error': 'Invalid customization data'}), 400
+        
+        # Update player customization
+        result = db.gamificationdb.players.update_one(
+            {'user_id': user_id},
+            {'$set': {'customization': customization_data}},
+            upsert=True
+        )
+        
+        return jsonify(customization_data), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
