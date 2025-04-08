@@ -13,7 +13,8 @@ CORS(app,
      resources={r"/api/*": {
          "origins": ["http://localhost:3000", "https://exper-frontend-production.up.railway.app"],
          "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-         "allow_headers": ["Content-Type", "Authorization"]
+         "allow_headers": ["Content-Type", "Authorization", "Accept"],
+         "supports_credentials": True
      }},
      supports_credentials=True)
 
