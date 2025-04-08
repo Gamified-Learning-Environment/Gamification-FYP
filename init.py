@@ -14,7 +14,10 @@ CORS(app,
          "origins": ["http://localhost:3000", "https://exper-frontend-production.up.railway.app"],
          "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
          "allow_headers": ["Content-Type", "Authorization", "Accept"],
-         "supports_credentials": True
+         "expose_headers": ["Content-Type", "Authorization"],
+         "supports_credentials": True,
+         "allow_credentials": True,
+         "max_age": 120
      }},
      supports_credentials=True)
 
