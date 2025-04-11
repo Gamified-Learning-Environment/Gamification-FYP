@@ -28,11 +28,11 @@ app.json_encoder = JSONEncoder
 # Player Endpoints
 
 # Get player profile by user_id, create new player if it doesn't exist
-@app.route('/api/player/<user_id>', methods=['GET'])
-def get_player(user_id): 
+@app.route('/api/player/<user_id>/<username>', methods=['GET'])
+def get_player(user_id, username): 
     try:
         # Get player data from the database 
-        print(f"Getting player with user_id: {user_id}")
+        print(f"Retrieving player data with user_id: {user_id} and username: {username}")
         playerData = db.gamificationdb.players.find_one({'user_id': user_id})
         
         if playerData: # If player data is found, return it
@@ -41,9 +41,9 @@ def get_player(user_id):
             # Process any other ObjectId fields
             return jsonify(prepare_for_json(playerData)), 200
         else: 
-            print(f"Creating new player for user_id: {user_id}")
+            print(f"Creating new player data for user_id: {user_id} with username: {username}")
             # Create new player profile if it doesn't exist
-            newPlayer = Player(user_id=user_id, username=request.args.get('username', 'Player')).to_dict()
+            newPlayer = Player(user_id=user_id, username=username).to_dict()
             db.gamificationdb.players.insert_one(newPlayer) # Insert new player into database
             return jsonify(newPlayer), 201 # Return the new player profile, 201 for created status
     except Exception as e: # Catch any exceptions and return error
@@ -51,14 +51,14 @@ def get_player(user_id):
         return jsonify({'error': str(e)}), 500 
 
 # Alternative method for getting detailed player stats including level, XP, achievements, and category progress
-@app.route('/api/users/<user_id>/stats', methods=['GET'])
-def get_player_stats(user_id):
+@app.route('/api/users/<user_id>/<username>/stats', methods=['GET'])
+def get_player_stats(user_id, username):
     try:
         player = db.gamificationdb.players.find_one({'user_id': user_id})
         if not player:
-            print(f"Creating new player for user_id: {user_id}")
+            print(f"Creating new player data for user_id: {user_id} with username: {username}")
             # Create new player profile if it doesn't exist
-            newPlayer = Player(user_id=user_id, username=request.args.get('username', 'Player')).to_dict()
+            newPlayer = Player(user_id=user_id, username=username).to_dict()
             db.gamificationdb.players.insert_one(newPlayer) # Insert new player into database
             return jsonify(newPlayer), 201 # Return the new player profile, 201 for created status
             
