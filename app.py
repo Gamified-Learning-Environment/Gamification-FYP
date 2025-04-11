@@ -56,7 +56,11 @@ def get_player_stats(user_id):
     try:
         player = db.gamificationdb.players.find_one({'user_id': user_id})
         if not player:
-            return jsonify({'error': 'Player not found'}), 404
+            print(f"Creating new player for user_id: {user_id}")
+            # Create new player profile if it doesn't exist
+            newPlayer = Player(user_id=user_id, username=request.args.get('username', 'Player')).to_dict()
+            db.gamificationdb.players.insert_one(newPlayer) # Insert new player into database
+            return jsonify(newPlayer), 201 # Return the new player profile, 201 for created status
             
         # Get player's achievements count
         achievements_count = len(player.get('achievements', []))
@@ -500,9 +504,10 @@ def check_achievements(user_id):
                     'award_result': award_result
                 })
 
-            matching_badge = db.gamificationdb.badges.find_one({'name': achievement.get('title')})
-            if matching_badge and matching_badge['badge_id'] not in earned_badges:
-                logger.info(f"Awarding {matching_badge['name']} badge to user {user_id}")
+                # Only check for matching badges for achievements that were just awarded
+                matching_badge = db.gamificationdb.badges.find_one({'name': achievement.get('title')})
+                if matching_badge and matching_badge['badge_id'] not in earned_badges:
+                    logger.info(f"Awarding {matching_badge['name']} badge to user {user_id}")
                 
                 # Award badge to player
                 db.gamificationdb.players.update_one(
