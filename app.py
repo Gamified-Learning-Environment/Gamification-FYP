@@ -176,6 +176,28 @@ def add_category_xp(user_id, category):
             {'$set': {'category_levels': player.category_levels}}
         )
 
+        # Check for category level badges if level up occurred
+        awarded_badges = []
+        if result["level_up"]:
+            new_level = result["new_level"]
+            
+            # Find badges that match this category level milestone
+            level_badges = list(db.gamificationdb.badges.find({
+                "category_type": category.lower(),
+                "level_requirement": new_level
+            }))
+            
+            for badge in level_badges:
+                if badge["badge_id"] not in playerData.get("badges", []):
+                    # Award the badge
+                    db.gamificationdb.players.update_one(
+                        {'user_id': user_id},
+                        {'$addToSet': {'badges': badge["badge_id"]}}
+                    )
+                    badge["_id"] = str(badge["_id"])
+                    badge["earned"] = True
+                    awarded_badges.append(badge)
+
         # Return updated info
         return jsonify({
             "category": category,
