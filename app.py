@@ -70,7 +70,6 @@ def get_player_stats(user_id, username):
         streak_days = streaks.get('current_streak', 0) if streaks else 0
         
         # Get quizzes completed and perfect scores from the results database (if available)
-        # This might require cross-service communication
         quizzes_completed = player.get('quizzes_completed', 0)
         quizzes_perfect = player.get('perfect_scores', 0)
         
@@ -83,14 +82,14 @@ def get_player_stats(user_id, username):
                 'category': category,
                 'level': data.get('level', 1),
                 'xp': data.get('xp', 0),
-                'totalXpRequired': 500 * data.get('level', 1)  # Assuming 500 * level for next level
+                'totalXpRequired': 500 * data.get('level', 1)  # 500 * level for next level
             })
             
         # Create response object with all player stats
         stats = {
             'level': player.get('current_level', 1),
             'xp': player.get('xp', 0),
-            'totalXpRequired': 500 * player.get('current_level', 1),  # Assuming 500 * level for next level
+            'totalXpRequired': 500 * player.get('current_level', 1),  # 500 * level for next level
             'streakDays': streak_days,
             'quizzesCompleted': quizzes_completed,
             'quizzesPerfect': quizzes_perfect,
