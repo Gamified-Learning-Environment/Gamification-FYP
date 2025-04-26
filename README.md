@@ -2,11 +2,15 @@
 
 This is the repository for managing the gamification elements of my Gamified Learning Environment where I plan to Implement an array of gamified features such as achievements, progress tracking, and leaderboards to enhance a student’s motivation to learn. See the Frontend and the Project Dissertation for greater details.
 
-### Contains: 
-Logic for awarding achievements, managing points, and updating leaderboards.
-### Technologies: 
-Python (Flask/FastAPI), NoSQL database (e.g., MongoDB) for storing user scores and achievements.
+## Service Overview
+The gamification microservice manages all the gaming elements that are developed within the platform to enhance a user's engagement and encourage their motivation to learn. These game mechanics help to reward users for study progress, give them a sense of achievement and maybe give them more consistent study habits.
 
+Here is a full overview of each gamified element this system implemented: 
+      - Experience Points (XP) System: User progress in the app is tracked through an accumulative gain of experience points. This is where the app took its name from. Points are rewarded for completing quizzes, doing daily challenges, earning badges or completing achievements as well as other positive behaviour like maintaining daily streaks. XP gained is pool either into the player's overall XP gained on the platform or into the specific category being studied.
+      - Levelling System: Accumulated XP is converted into levels. This includes both global levels that indicate overall engagement with the platform and category-specific levels that show expertise in the respective category of study. Each level requires progressively more XP to achieve than the previous.
+      - Achievement System: A fully fledged achievement system is developed. This involves achievement objects that are stored in the database, and user's can unlock them by meeting their specified criteria. A variety of ways are used to check if a user has trigged an achievement milestone or not.
+      - Badge System: These are visual awards, sort of like stamps. They are earned when ever an achievement is complete or for select category levels reached. User's can display them on their profile to showcase what significant accomplishments they've made. They serve as a form of status symbol, a player's profile can be customised to showcase whichever ones they prefer.
+      - Leaderboard System: Maintains rankings across different metrics within the app. Whether that be total quizzes completed, achievements earned, total xp gained or more. This is a classic game mechanic that fosters some friendly competition amongst peers. 
 
 ## Deployment and Running
 While you could download, compile and run each of the repositories for this Final Year Project and get a more in depth look into the code, it is also fully deployed on Railway at the following link : https://exper-frontend-production.up.railway.app
