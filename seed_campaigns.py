@@ -345,7 +345,7 @@ def seed_campaigns():
         else:
             print(f"Database already contains {existing_count} campaigns. Skipping seeding.")
             
-            # Optional: Update campaigns that may be missing
+            # Update campaigns that may be missing
             for campaign in campaigns:
                 quests = campaign.pop("quests", [])
                 

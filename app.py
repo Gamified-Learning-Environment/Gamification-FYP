@@ -146,6 +146,7 @@ def add_player_xp(user_id):
         return jsonify({"error": str(e)}), 500
     
 
+# Update player category xp by user_id and category
 @app.route('/api/player/<user_id>/category/<category>/xp', methods=['POST'])
 def add_category_xp(user_id, category):
     try: 
@@ -629,6 +630,7 @@ def debug_player_achievements(user_id):
 
 # Badge Endpoints
 
+# Get all badges from database, return as JSON
 @app.route('/api/player/<user_id>/badges', methods=['GET'])
 def get_player_badges(user_id):
     try:
@@ -1141,7 +1143,7 @@ def init_campaigns():
     except Exception as e:
         print(f"Error initializing campaigns: {str(e)}")
 
-
+# Get leaderboard data
 @app.route('/api/leaderboard', methods=['GET'])
 def get_leaderboard():
     """Get all players sorted by various stats for the leaderboard"""
@@ -1191,7 +1193,7 @@ def get_leaderboard():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
+# Get player customization data
 @app.route('/api/player/<user_id>/customization', methods=['GET'])
 def get_player_customization(user_id):
     try:
@@ -1216,6 +1218,7 @@ def get_player_customization(user_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Update player customization data
 @app.route('/api/player/<user_id>/customization', methods=['POST'])
 def update_player_customization(user_id):
     try:

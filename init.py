@@ -100,7 +100,6 @@ def init_achievements():
             conditions={"badges_collected": 5}
         )
 
-        # Add more achievements here
 
     ]
 
